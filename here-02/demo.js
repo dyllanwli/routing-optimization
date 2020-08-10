@@ -58,12 +58,19 @@ var map = new H.Map(mapContainer, defaultLayers.vector.normal.map, {
 });
 
 function drawAreas(map) {
-  var firstArea = new H.map.Rect(new H.geo.Rect(lng1, lat1, lng2, lat2));
+  let avoidanceStyle = {
+    strokeColor: "black",
+    fillColor: "black",
+  };
+
+  var firstArea = new H.map.Rect(new H.geo.Rect(lng1, lat1, lng2, lat2), {
+    // style: avoidanceStyle,
+  });
 
   map.addObject(firstArea);
 }
 // add avoidance
-drawAreas(map)
+drawAreas(map);
 // add a resize listener to make sure that the map occupies the whole container
 window.addEventListener("resize", () => map.getViewPort().resize());
 
