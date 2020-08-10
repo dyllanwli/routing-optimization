@@ -1,36 +1,36 @@
+const lng1 = 30.640896;
+const lat1 = -96.370344;
+const lng2 = 30.637099;
+const lat2 = -96.356389;
 
-const lng1 = 30.640896
-const lat1 = -96.370344
-const lng2 = 30.637099
-const lat2 = -96.356389
-// console.log([lng1,lat1,lng2,lat2].join())
 function calculateRouteFromAtoB(platform) {
-  // calling the routing service version 8
-  var router = platform.getRoutingService(null, 8),
+  var router = platform.getRoutingService(),
     routeRequestParams = {
-      'routingMode': "fast",
-      'transportMode': "car",
-      'origin': "30.649768,-96.36626",
-      'destination': "30.62734,-96.36209",
-      'avoid[areas]': 
-        "bbox:"+[lng1,lat1,lng2,lat2].join().toString()
-    ,
-      'return': "polyline,turnByTurnActions,actions,instructions,travelSummary",
+      mode: "fastest;car",
+      representation: "display",
+      routeattributes: "waypoints,summary,shape,legs",
+      maneuverattributes: "direction,action",
+      avoidareas: "30.640896,-96.370344;30.637099,-96.356389",
+      waypoint0: "30.649768,-96.36626", // Brandenburg Gate
+      waypoint1: "30.62734,-96.36209", // Friedrichstraße Railway Station
     };
 
-  // call back to on Success or on Error
   router.calculateRoute(routeRequestParams, onSuccess, onError);
 }
 
 function onSuccess(result) {
-  console.log(result);
-  var route = result.routes[0];
-
+  var route = result.response.route[0];
+  /*
+   * The styling of the route response on the map is entirely under the developer's control.
+   * A representitive styling can be found the full JS + HTML code of this example
+   * in the functions below:
+   */
   addRouteShapeToMap(route);
   addManueversToMap(route);
-  addWaypointsToPanel(route);
+
+  addWaypointsToPanel(route.waypoint);
   addManueversToPanel(route);
-  addSummaryToPanel(route);
+  addSummaryToPanel(route.summary);
   // ... etc.
 }
 
@@ -38,19 +38,14 @@ function onError(error) {
   alert("Can't reach the remote server");
 }
 
-function drawAreas(map) {
-  var firstArea = new H.map.Rect(new H.geo.Rect(lng1,lat1,lng2,lat2));
-  
-  map.addObject(firstArea);
-}
-
 // set up containers for the map  + panel
 var mapContainer = document.getElementById("map"),
   routeInstructionsContainer = document.getElementById("panel");
 
 //Step 1: initialize communication with the platform
+// In your own code, replace variable window.apikey with your own apikey
 var platform = new H.service.Platform({
-  apikey: token,
+  apikey: window.apikey,
 });
 
 var defaultLayers = platform.createDefaultLayers();
@@ -62,9 +57,13 @@ var map = new H.Map(mapContainer, defaultLayers.vector.normal.map, {
   pixelRatio: window.devicePixelRatio || 1,
 });
 
+function drawAreas(map) {
+  var firstArea = new H.map.Rect(new H.geo.Rect(lng1, lat1, lng2, lat2));
+
+  map.addObject(firstArea);
+}
 // add avoidance
 drawAreas(map)
-
 // add a resize listener to make sure that the map occupies the whole container
 window.addEventListener("resize", () => map.getViewPort().resize());
 
@@ -104,35 +103,26 @@ function openBubble(position, text) {
  * @param {Object} route A route as received from the H.service.RoutingService
  */
 function addRouteShapeToMap(route) {
-  route.sections.forEach((section) => {
-    // decode LineString from the flexible polyline
-    let linestring = H.geo.LineString.fromFlexiblePolyline(section.polyline);
+  var lineString = new H.geo.LineString(),
+    routeShape = route.shape,
+    polyline;
 
-    // Create a polyline to display the route:
-    let polyline = new H.map.Polyline(linestring, {
-      style: {
-        lineWidth: 4,
-        strokeColor: "rgba(0, 128, 255, 0.7)",
-      },
-    });
+  routeShape.forEach(function (point) {
+    var parts = point.split(",");
+    lineString.pushLatLngAlt(parts[0], parts[1]);
+  });
 
-    let routeArrows = new H.map.Polyline(linestring, {
-      style: {
-        lineWidth: 10,
-        fillColor: "white",
-        strokeColor: "rgba(255, 255, 255, 1)",
-        lineDash: [0, 2],
-        lineTailCap: "arrow-tail",
-        lineHeadCap: "arrow-head",
-      },
-    });
-
-    // Add the polyline to the map
-    map.addObject(polyline);
-    // And zoom to its bounding rectangle
-    map.getViewModel().setLookAtData({
-      bounds: polyline.getBoundingBox(),
-    });
+  polyline = new H.map.Polyline(lineString, {
+    style: {
+      lineWidth: 4,
+      strokeColor: "rgba(0, 128, 255, 0.7)",
+    },
+  });
+  // Add the polyline to the map
+  map.addObject(polyline);
+  // And zoom to its bounding rectangle
+  map.getViewModel().setLookAtData({
+    bounds: polyline.getBoundingBox(),
   });
 }
 
@@ -151,57 +141,53 @@ function addManueversToMap(route) {
     group = new H.map.Group(),
     i,
     j;
-  route.sections.forEach((section) => {
-    let poly = H.geo.LineString.fromFlexiblePolyline(
-      section.polyline
-    ).getLatLngAltArray();
 
-    let actions = section.actions;
-    // Add a marker for each maneuver
-    for (i = 0; i < actions.length; i += 1) {
-      let action = actions[i];
+  // Add a marker for each maneuver
+  for (i = 0; i < route.leg.length; i += 1) {
+    for (j = 0; j < route.leg[i].maneuver.length; j += 1) {
+      // Get the next maneuver.
+      maneuver = route.leg[i].maneuver[j];
+      // Add a marker to the maneuvers group
       var marker = new H.map.Marker(
         {
-          lat: poly[action.offset * 3],
-          lng: poly[action.offset * 3 + 1],
+          lat: maneuver.position.latitude,
+          lng: maneuver.position.longitude,
         },
         { icon: dotIcon }
       );
-      marker.instruction = action.instruction;
+      marker.instruction = maneuver.instruction;
       group.addObject(marker);
     }
+  }
 
-    group.addEventListener(
-      "tap",
-      function (evt) {
-        map.setCenter(evt.target.getGeometry());
-        openBubble(evt.target.getGeometry(), evt.target.instruction);
-      },
-      false
-    );
+  group.addEventListener(
+    "tap",
+    function (evt) {
+      map.setCenter(evt.target.getGeometry());
+      openBubble(evt.target.getGeometry(), evt.target.instruction);
+    },
+    false
+  );
 
-    // Add the maneuvers group to the map
-    map.addObject(group);
-  });
+  // Add the maneuvers group to the map
+  map.addObject(group);
 }
 
 /**
  * Creates a series of H.map.Marker points from the route and adds them to the map.
  * @param {Object} route  A route as received from the H.service.RoutingService
  */
-function addWaypointsToPanel(route) {
+function addWaypointsToPanel(waypoints) {
   var nodeH3 = document.createElement("h3"),
-    labels = [];
+    waypointLabels = [],
+    i;
 
-  route.sections.forEach((section) => {
-    labels.push(section.turnByTurnActions[0].nextRoad.name[0].value);
-    labels.push(
-      section.turnByTurnActions[section.turnByTurnActions.length - 1]
-        .currentRoad.name[0].value
-    );
-  });
+  for (i = 0; i < waypoints.length; i += 1) {
+    waypointLabels.push(waypoints[i].label);
+  }
 
-  nodeH3.textContent = labels.join(" - ");
+  nodeH3.textContent = waypointLabels.join(" - ");
+
   routeInstructionsContainer.innerHTML = "";
   routeInstructionsContainer.appendChild(nodeH3);
 }
@@ -210,20 +196,14 @@ function addWaypointsToPanel(route) {
  * Creates a series of H.map.Marker points from the route and adds them to the map.
  * @param {Object} route  A route as received from the H.service.RoutingService
  */
-function addSummaryToPanel(route) {
-  let duration = 0,
-    distance = 0;
-
-  route.sections.forEach((section) => {
-    distance += section.travelSummary.length;
-    duration += section.travelSummary.duration;
-  });
-
+function addSummaryToPanel(summary) {
   var summaryDiv = document.createElement("div"),
     content = "";
-  content += "<b>Total distance</b>: " + distance + "m. <br/>";
+  content += "<b>Total distance</b>: " + summary.distance + "m. <br/>";
   content +=
-    "<b>Travel Time</b>: " + duration.toMMSS() + " (in current traffic)";
+    "<b>Travel Time</b>: " +
+    summary.travelTime.toMMSS() +
+    " (in current traffic)";
 
   summaryDiv.style.fontSize = "small";
   summaryDiv.style.marginLeft = "5%";
@@ -237,27 +217,33 @@ function addSummaryToPanel(route) {
  * @param {Object} route  A route as received from the H.service.RoutingService
  */
 function addManueversToPanel(route) {
-  var nodeOL = document.createElement("ol");
+  var nodeOL = document.createElement("ol"),
+    i,
+    j;
 
   nodeOL.style.fontSize = "small";
   nodeOL.style.marginLeft = "5%";
   nodeOL.style.marginRight = "5%";
   nodeOL.className = "directions";
 
-  route.sections.forEach((section) => {
-    section.actions.forEach((action, idx) => {
+  // Add a marker for each maneuver
+  for (i = 0; i < route.leg.length; i += 1) {
+    for (j = 0; j < route.leg[i].maneuver.length; j += 1) {
+      // Get the next maneuver.
+      maneuver = route.leg[i].maneuver[j];
+
       var li = document.createElement("li"),
         spanArrow = document.createElement("span"),
         spanInstruction = document.createElement("span");
 
-      spanArrow.className = "arrow " + (action.direction || "") + action.action;
-      spanInstruction.innerHTML = section.actions[idx].instruction;
+      spanArrow.className = "arrow " + maneuver.action;
+      spanInstruction.innerHTML = maneuver.instruction;
       li.appendChild(spanArrow);
       li.appendChild(spanInstruction);
 
       nodeOL.appendChild(li);
-    });
-  });
+    }
+  }
 
   routeInstructionsContainer.appendChild(nodeOL);
 }
