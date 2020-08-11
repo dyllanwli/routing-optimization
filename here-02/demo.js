@@ -59,8 +59,8 @@ var map = new H.Map(mapContainer, defaultLayers.vector.normal.map, {
 
 function drawAreas(map) {
   let avoidanceStyle = {
-    strokeColor: "black",
-    fillColor: "black",
+    strokeColor: "#ffffe3",
+    fillColor: "#ffffe3",
   };
 
   var firstArea = new H.map.Rect(new H.geo.Rect(lng1, lat1, lng2, lat2), {
